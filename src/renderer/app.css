@@ -18,3 +18,7 @@
 .factoryIcon {
     fill: red;
 }
+
+.OverflowClip {
+    overflow: auto !important;
+  }

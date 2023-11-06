@@ -1,10 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { FeatureCollection } from "geojson";
+import { World } from "./lib/models/world";
 
 console.log("Loading preload scripts");
-contextBridge.exposeInMainWorld("map", {
-  async loadFeatureCollections(): Promise<FeatureCollection[]> {
-    const res = await ipcRenderer.invoke('map.loadFeatureCollection');
+contextBridge.exposeInMainWorld("world", {
+  async load(): Promise<World | undefined> {
+    const res = await ipcRenderer.invoke('world.load');
     return res;
 
   }

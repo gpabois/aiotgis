@@ -2,6 +2,7 @@ import {app, BrowserWindow, dialog, ipcMain} from 'electron'
 import { FeatureCollection } from 'georisques';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
+import { World } from '../lib/models/world';
 
 function createWindow() {
     const win = new BrowserWindow({
@@ -18,12 +19,20 @@ function createWindow() {
 app.whenReady().then(() => {
     createWindow();
 
-    ipcMain.handle('map.loadFeatureCollection', async() => {
-        const result = await dialog.showOpenDialog({properties: ['openFile', 'multiSelections']});
-        return Promise.all(result.filePaths.map(async (fp) => {
-          const data = await readFile(fp);
-          return JSON.parse(data.toString()) as FeatureCollection;
-        }))
+    // World API
+    ipcMain.handle('world.load', async() => {
+        const result = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                {name: "Monde", extensions: ["world"]}
+            ]
+        });
+        if (result.filePaths.length > 0)  {
+            const data = await readFile(result.filePaths[0]);
+            return World.load(data)
+        } else {
+            return undefined
+        }
     })
     
     app.on('activate', () => {

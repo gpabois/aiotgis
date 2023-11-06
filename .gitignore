@@ -1,0 +1,6 @@
+.webpack
+bin
+build
+node_modules
+**/*.world
+**/*.geojson

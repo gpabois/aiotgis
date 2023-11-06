@@ -1,12 +1,12 @@
-import { FeatureCollection } from "georisques";
+import { World } from "./lib/models/world";
 
 export {};
 
 
 declare global {
     interface Window {
-        map: {
-            loadFeatureCollections(): Promise<FeatureCollection[]>;
+        world: {
+            load(): Promise<World | undefined>;
         }
     }
 }
