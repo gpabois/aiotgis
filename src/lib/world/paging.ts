@@ -154,7 +154,7 @@ export class EntryPage {
     /**
      * Write a new entry
      * @param stream 
-     * @returns -1 if no space, else the entry id in the page.
+     * @returns the entry's in-page id
      */
     writeEntry(stream: Uint8ArrayStream): number {
         let rem = this.meta.freeLength - REQUIRED_ENTRY_SIZE;
@@ -177,10 +177,10 @@ export class EntryPage {
         // Get the new entry in-page id
         const entryId = this.entryOffsets.length - 1;
 
-        // Consume free space to allocate 
-        // - space for a new entry offset,
-        // - allocate space for an entry meta,
-        // - allocate space to store as much entry data we can.
+        // Consume free space to allocate space
+        // - for a new entry offset,
+        // - for an entry meta,
+        // - to store as much entry data we can.
         this.meta.freeOffset += ENTRY_META_SIZE + sizeInPage;
         this.meta.freeLength -= REQUIRED_ENTRY_SIZE + sizeInPage;
 
