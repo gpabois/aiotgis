@@ -51,6 +51,7 @@
     "react-dom": "^18.2.0",
     "react-leaflet": "^4.2.1",
     "react-resizable-panels": "^0.0.55",
+    "sorted-btree": "^1.8.1",
     "transform-coordinates": "^1.0.0",
     "yargs": "^17.7.2"
   }
