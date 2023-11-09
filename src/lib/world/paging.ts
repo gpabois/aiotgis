@@ -1,4 +1,5 @@
 import { Uint8ArrayStream, writeDWord32, writeDWord64, writeWord } from "./bytes";
+import { ByteStream, copy } from "./stream";
 
 /**
  * Size of a page
@@ -95,9 +96,29 @@ export interface EntryMeta {
     overflow: PageId | null;
 }
 
+function readEntryMeta(stream: ByteStream): EntryMeta {
+    return {
+        totalSize: stream.readValue(64),
+        sizeInPage: stream.readValue(16),
+        overflow: stream.readValue(64)
+    }
+}
+
+function updateEntryMeta(stream: ByteStream, patch: Partial<EntryMeta>) {
+    if(patch.totalSize) stream.writeValue(patch.totalSize, 64);
+    else stream.seek(stream.cursor() + 4);
+
+    if(patch.sizeInPage) stream.writeValue(patch.sizeInPage, 16);
+    else stream.seek(stream.cursor() + 2);
+
+    if(patch.overflow) stream.writeValue(patch.overflow, 64);
+}
+function writeEntryMeta(stream: ByteStream, meta: EntryMeta) {
+    updateEntryMeta(stream, meta);
+}
+
 /**
- * A loaded entry page from memory
- * Includes data from overflow pages as well.
+ * En entry page
  */
 export class EntryPage {
     /**
@@ -117,50 +138,61 @@ export class EntryPage {
     /**
      * Buffer
      */
-    buffer: Uint8Array = new Uint8Array(PAGE_SIZE);
+    stream: ByteStream = ByteStream.alloc(PAGE_SIZE);
     
     /**
      * Write Meta in the buffer
      */
     writeMeta() {
-        let stream = new Uint8ArrayStream(this.buffer, 0);
-        stream.writeDWord64(this.meta.id);
-        stream.writeByte(PageTypeMap.indexOf(this.meta.type));
-        stream.writeWord(this.meta.freeOffset);
-        stream.writeWord(this.meta.freeLength);
+        let cur = this.stream.seek({type: "relative", value: 0});
+        this.stream.seek(0);
+        this.stream.writeValue(this.meta.id, 64);
+        this.stream.writeValue(PageTypeMap.indexOf(this.meta.type), 8);
+        this.stream.writeValue(this.meta.freeOffset, 16);
+        this.stream.writeValue(this.meta.freeLength, 16);
+        this.stream.seek(cur);
     }
 
     /**
      * Write entry offsets
      * @param data 
-     * @returns the number of byte written.
      */
-    writeEntryOffsets(data: Uint8Array) {}
-
-    writeEntryMeta(id: number, meta: EntryMeta) {
-        this.updateEntryMeta(id, meta);
+    writeEntryOffsets() {
+        this.stream.seek(-(this.entryOffsets.length * 2));
+        this.entryOffsets.reverse().forEach((off) => this.stream.writeValue(off, 16));
     }
+
     /**
-     * Update an entry metadata
-     * @param id 
-     * @param patch 
+     * Put the page cursor to the entry behind the id.
+     * @param rowId 
      */
-    updateEntryMeta(id: number, patch: Partial<EntryMeta>) {
-        const off = this.entryOffsets[id];
-        if(patch.totalSize)  writeDWord32(this.buffer, off, patch.totalSize);
-        if(patch.sizeInPage) writeWord(this.buffer, off + 4, patch.sizeInPage);
-        if(patch.overflow)   writeDWord64(this.buffer, off + 6, patch.overflow);
+    seekEntry(rowId: number) {
+        this.stream.seek(this.entryOffsets[rowId]);
+    }
+
+    /**
+     * Push a new entry, returns the internal id
+     */
+    pushEntry(): number {
+        // Get the current offset to the free space.
+        let offset = this.meta.freeOffset; 
+        
+        // Push an offset entry
+        this.entryOffsets.push(offset);
+        
+        // Get the new entry in-page id
+        return this.entryOffsets.length - 1;
     }
     /**
      * Write a new entry
      * @param stream 
      * @returns the entry's in-page id
      */
-    writeEntry(stream: Uint8ArrayStream): number {
+    writeEntry(data: ByteStream): number {
         let rem = this.meta.freeLength - REQUIRED_ENTRY_SIZE;
         
-        const totalSize = stream.length()
-        const sizeInPage = Math.min(stream.remaining(), rem);
+        const totalSize = data.length()
+        const sizeInPage = Math.min(data.remaining(), rem);
         
         let entryMeta: EntryMeta = {
             totalSize,
@@ -168,14 +200,8 @@ export class EntryPage {
             overflow: null
         };
 
-        // Get the remaining space to store the row
-        let offset = this.meta.freeOffset; 
-        
-        // Push an offset entry
-        this.entryOffsets.push(offset);
-        
-        // Get the new entry in-page id
-        const entryId = this.entryOffsets.length - 1;
+        // Allocate space for a new entry
+        let entryId = this.pushEntry();
 
         // Consume free space to allocate space
         // - for a new entry offset,
@@ -184,6 +210,15 @@ export class EntryPage {
         this.meta.freeOffset += ENTRY_META_SIZE + sizeInPage;
         this.meta.freeLength -= REQUIRED_ENTRY_SIZE + sizeInPage;
 
+        // Write what we can write
+        this.seekEntry(entryId);
+        
+        // Write entry meta
+        writeEntryMeta(this.stream, entryMeta);
+
+        // Write what we can
+        copy(this.stream, data, sizeInPage);
+        
         return entryId;
     }
     /**
